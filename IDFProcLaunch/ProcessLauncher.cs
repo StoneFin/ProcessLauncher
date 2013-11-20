@@ -14,15 +14,31 @@ namespace IDF.Utilities.ProcLaunch
 
     private static void Main(string[] args)
     {
-      //the config file is either the first argument, or right next to the assembly
-      string configPath;
-      if (args.Length != 0 && File.Exists(args[0]))
-        configPath = args[0];
-      else
-        configPath = Path.Combine(WorkingDirectory, "ProcessLauncher.config");
-      //load config
-      var reader = File.OpenRead(configPath);
-      _configInfo = (new System.Xml.Serialization.XmlSerializer(typeof (ProcTree))).Deserialize(reader) as ProcTree;
+      try
+      {
+        //the config file is either the first argument, or right next to the assembly
+        string configPath;
+        if (args.Length != 0 && File.Exists(args[0]))
+          configPath = args[0];
+        else
+          configPath = Path.Combine(WorkingDirectory, "ProcessLauncherConfig.xml");
+        //load config
+        var reader = File.OpenRead(configPath);
+        _configInfo = (new System.Xml.Serialization.XmlSerializer(typeof(ProcTree))).Deserialize(reader) as ProcTree;
+      }
+      catch (Exception ex)
+      {
+        Exception InnerException = ex.InnerException;
+        while (InnerException.InnerException != null)
+          InnerException = InnerException.InnerException;
+        Console.WriteLine("Invalid config - caught error messsage: " + ex.Message);
+        Console.WriteLine(InnerException.Message);
+        Console.WriteLine("");
+        Console.WriteLine("The config file must be either next to ProcessLauncher.exe, and named ProcessLauncher.config, OR specified by a full path as the first argument to ProcessLauncher.exe");
+        Console.WriteLine("Press any key to exit");
+        Console.ReadKey();
+        return;
+      }
 
 
       //run through the config tree and set up all the process infos.
