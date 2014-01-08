@@ -1,6 +1,8 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Management;
 using System.Reflection;
 using System.Linq;
 using System.Threading;
@@ -41,7 +43,7 @@ namespace IDF.Utilities.ProcLaunch
       }
 
 
-      //run through the config tree and set up all the process infos.
+      //run through the config tree and set up all the process infos.  Don't launch them yet.
       foreach (var dep in _configInfo.Processes)
       {
         try
@@ -50,7 +52,7 @@ namespace IDF.Utilities.ProcLaunch
         }
         catch (Exception ex)
         {
-          Console.WriteLine(string.Format("Error launching parent process '{0}'{1}{2}",dep.Path,Environment.NewLine,ex.Message));
+          Console.WriteLine(string.Format("Error setting up parent process '{0}'{1}{2}",dep.Path,Environment.NewLine,ex.Message));
           Console.WriteLine("Press any key to continue");
           Console.ReadKey();
           return;
@@ -64,7 +66,7 @@ namespace IDF.Utilities.ProcLaunch
           }
           catch (Exception ex)
           {
-            Console.WriteLine(string.Format("Error launching child process '{0}'{1}{2}", childDep.Path, Environment.NewLine, ex.Message));
+            Console.WriteLine(string.Format("Error setting up child process '{0}'{1}{2}", childDep.Path, Environment.NewLine, ex.Message));
             Console.WriteLine("Press any key to continue");
             Console.Read();
             return;
@@ -77,9 +79,12 @@ namespace IDF.Utilities.ProcLaunch
       {
         foreach (var proc in _configInfo.Processes)
         {
+          //kick off a parent
           proc.ProcessInfo.Start();
+
           foreach (var childProc in proc.Dependancies)
           {
+            //kick off all the children for this parent
             Thread.Sleep(100); //wait a little bit in between child processes
             childProc.ProcessInfo.Start();
           }
@@ -97,15 +102,33 @@ namespace IDF.Utilities.ProcLaunch
         {
           if (_configInfo.Processes.All(x => x.ProcessInfo.HasExited))
           {
-            //kill all dependencies
-            foreach (
-              var childProc in
-                _configInfo.Processes.SelectMany(proc => proc.Dependancies.Where(x => !x.ProcessInfo.HasExited)))
+            //we want to watch for child spawns - if we run this thing and it spawns a child, and then dies (because it's another helper app), we want to pay attention to it's child and treat it as the "parent"
+            var parentsHaveLiveChilderen = false;
+            foreach (var launchInfo in _configInfo.Processes)
             {
-              childProc.ProcessInfo.EnableRaisingEvents = false;
-              childProc.ProcessInfo.Kill();
+              //the parent process is dead at this point, but we know what it's processID was.
+              var childeren = ProcessExtensions.GetChildProcesses(launchInfo.ProcessInfo.Id);
+              if (childeren.Count() > 0)
+              {
+                //then we have spawns and should not exit
+                parentsHaveLiveChilderen = true;
+                break;
+              }
             }
-            Environment.Exit(0);
+
+
+            if (!parentsHaveLiveChilderen)
+            {
+              //kill all dependencies
+              foreach (
+                var childProc in
+                  _configInfo.Processes.SelectMany(proc => proc.Dependancies.Where(x => !x.ProcessInfo.HasExited)))
+              {
+                childProc.ProcessInfo.EnableRaisingEvents = false;
+                childProc.ProcessInfo.Kill();
+              }
+              Environment.Exit(0);
+            }
           }
         }
         Thread.Sleep(5000);
@@ -113,6 +136,26 @@ namespace IDF.Utilities.ProcLaunch
     }
 
     #region Helpers
+    public static class ProcessExtensions
+    {
+      /// <summary>
+      /// Static method to get a list of child processes for a specific process ID
+      /// </summary>
+      /// <param name="processId">Id of the parent process</param>
+      /// <returns>IEnumerable list of processes that have a "parent ID" attribute that matches that ID passed in</returns>
+      public static IEnumerable<Process> GetChildProcesses(int processId)
+      {
+        var children = new List<Process>();
+        var mos = new ManagementObjectSearcher(String.Format("Select * From Win32_Process Where ParentProcessID={0}", processId));
+
+        foreach (ManagementObject mo in mos.Get())
+        {
+          children.Add(Process.GetProcessById(Convert.ToInt32(mo["ProcessID"])));
+        }
+
+        return children;
+      }
+    }
     private static void SetupProcess(ProcInfo dep)
     {
       if (!File.Exists(dep.Path))
