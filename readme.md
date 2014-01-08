@@ -8,6 +8,6 @@ The benefit this tool brings over the typical batch file is that you can configu
 
 See ProcessLauncherConfig.xml for an example configuration. The configuration file must be either next to the executable, or provided as the first argument in the form of a full path.
 
-We made this app specifically to use in a Citrix publiched application environment.
+We made this app specifically to use in a Citrix published application environment.
 
 SIDE NOTE: When you specify a "parent" app, it now watches for children that app launches and treats them all like "parent" apps.  This takes care of situations where we actually specify a launcher app of some sort that kicks off what you really want and then exits.
