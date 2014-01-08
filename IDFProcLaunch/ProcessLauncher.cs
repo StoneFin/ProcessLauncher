@@ -44,11 +44,31 @@ namespace IDF.Utilities.ProcLaunch
       //run through the config tree and set up all the process infos.
       foreach (var dep in _configInfo.Processes)
       {
-        SetupProcess(dep);
+        try
+        {
+          SetupProcess(dep);
+        }
+        catch (Exception ex)
+        {
+          Console.WriteLine(string.Format("Error launching parent process '{0}'{1}{2}",dep.Path,Environment.NewLine,ex.Message));
+          Console.WriteLine("Press any key to continue");
+          Console.ReadKey();
+          return;
+        }
         foreach (var childDep in dep.Dependancies)
         {
-          childDep.Parent = dep;
-          SetupProcess(childDep);
+          try
+          {
+            childDep.Parent = dep;
+            SetupProcess(childDep);
+          }
+          catch (Exception ex)
+          {
+            Console.WriteLine(string.Format("Error launching child process '{0}'{1}{2}", childDep.Path, Environment.NewLine, ex.Message));
+            Console.WriteLine("Press any key to continue");
+            Console.Read();
+            return;
+          }
         }
       }
 
@@ -128,8 +148,8 @@ namespace IDF.Utilities.ProcLaunch
       //a parent process has exited, kill all dependant programs!
       lock (_configInfo)
       {
-        var proc = _configInfo.Processes.Single(x => x.ProcessInfo == (Process) sender);
-        foreach(var dep in proc.Dependancies.Where(x=>!x.ProcessInfo.HasExited))
+        var proc = _configInfo.Processes.Single(x => x.ProcessInfo == (Process)sender);
+        foreach (var dep in proc.Dependancies.Where(x => !x.ProcessInfo.HasExited))
           dep.ProcessInfo.Kill();
       }
     }
@@ -138,7 +158,7 @@ namespace IDF.Utilities.ProcLaunch
     {
       lock (_configInfo)
       {
-        var theDep = _configInfo.Processes.SelectMany(x=>x.Dependancies).Single(x => x.ProcessInfo == (Process)sender);
+        var theDep = _configInfo.Processes.SelectMany(x => x.Dependancies).Single(x => x.ProcessInfo == (Process)sender);
         //if the parent is done, then don't do anything. If not, and if the process supposed to be restarted, restart it.
         if (theDep.Restart && theDep.ProcessInfo.HasExited) //Typically, the subject being copied is terminated. 
           theDep.ProcessInfo.Start(); //start just re-uses the ProcessStartInfo and starts a new pid with the same info
