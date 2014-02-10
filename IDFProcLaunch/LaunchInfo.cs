@@ -6,6 +6,6 @@ namespace IDF.Utilities.ProcLaunch
   public class LaunchInfo : ProcInfo
   {
     [XmlElement("ChildProcInfo")]
-    public List<ProcInfo> Dependancies { get; set; }
+    public List<ProcInfo> Dependencies { get; set; }
   }
 }

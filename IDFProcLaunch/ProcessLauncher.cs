@@ -44,24 +44,24 @@ namespace IDF.Utilities.ProcLaunch
 
 
       //run through the config tree and set up all the process infos.  Don't launch them yet.
-      foreach (var dep in _configInfo.Processes)
+      foreach (var procToLaunch in _configInfo.Processes)
       {
         try
         {
-          SetupProcess(dep);
+          SetupProcess(procToLaunch);
         }
         catch (Exception ex)
         {
-          Console.WriteLine(string.Format("Error setting up parent process '{0}'{1}{2}",dep.Path,Environment.NewLine,ex.Message));
+          Console.WriteLine(string.Format("Error setting up parent process '{0}'{1}{2}",procToLaunch.Path,Environment.NewLine,ex.Message));
           Console.WriteLine("Press any key to continue");
           Console.ReadKey();
           return;
         }
-        foreach (var childDep in dep.Dependancies)
+        foreach (var childDep in procToLaunch.Dependencies)
         {
           try
           {
-            childDep.Parent = dep;
+            childDep.Parent = procToLaunch;
             SetupProcess(childDep);
           }
           catch (Exception ex)
@@ -82,7 +82,7 @@ namespace IDF.Utilities.ProcLaunch
           //kick off a parent
           proc.ProcessInfo.Start();
 
-          foreach (var childProc in proc.Dependancies)
+          foreach (var childProc in proc.Dependencies)
           {
             //kick off all the children for this parent
             Thread.Sleep(100); //wait a little bit in between child processes
@@ -103,26 +103,26 @@ namespace IDF.Utilities.ProcLaunch
           if (_configInfo.Processes.All(x => x.ProcessInfo.HasExited))
           {
             //we want to watch for child spawns - if we run this thing and it spawns a child, and then dies (because it's another helper app), we want to pay attention to it's child and treat it as the "parent"
-            var parentsHaveLiveChilderen = false;
+            var parentsHaveLiveChildren = false;
             foreach (var launchInfo in _configInfo.Processes)
             {
               //the parent process is dead at this point, but we know what it's processID was.
-              var childeren = ProcessExtensions.GetChildProcesses(launchInfo.ProcessInfo.Id);
-              if (childeren.Count() > 0)
+              var children = ProcessExtensions.GetChildProcesses(launchInfo.ProcessInfo.Id);
+              if (children.Count() > 0)
               {
                 //then we have spawns and should not exit
-                parentsHaveLiveChilderen = true;
+                parentsHaveLiveChildren = true;
                 break;
               }
             }
 
 
-            if (!parentsHaveLiveChilderen)
+            if (!parentsHaveLiveChildren)
             {
               //kill all dependencies
               foreach (
                 var childProc in
-                  _configInfo.Processes.SelectMany(proc => proc.Dependancies.Where(x => !x.ProcessInfo.HasExited)))
+                  _configInfo.Processes.SelectMany(proc => proc.Dependencies.Where(x => !x.ProcessInfo.HasExited)))
               {
                 childProc.ProcessInfo.EnableRaisingEvents = false;
                 childProc.ProcessInfo.Kill();
@@ -165,7 +165,7 @@ namespace IDF.Utilities.ProcLaunch
         throw new ArgumentException("You must specify a valid working directory or none at all for all processes!",
                                     new DirectoryNotFoundException("Directory not found: " + dep.WorkingDir));
 
-      //fire up the main process, then fire up the dependancies.
+      //fire up the main process, then fire up the dependencies.
       dep.ProcessInfo = new System.Diagnostics.Process
                           {
                             StartInfo = new ProcessStartInfo(dep.Path, dep.Arguments ?? "")
@@ -188,11 +188,11 @@ namespace IDF.Utilities.ProcLaunch
     #region Event Handlers
     static void parentProcess_Exited(object sender, EventArgs e)
     {
-      //a parent process has exited, kill all dependant programs!
+      //a parent process has exited, kill all dependent programs!
       lock (_configInfo)
       {
         var proc = _configInfo.Processes.Single(x => x.ProcessInfo == (Process)sender);
-        foreach (var dep in proc.Dependancies.Where(x => !x.ProcessInfo.HasExited))
+        foreach (var dep in proc.Dependencies.Where(x => !x.ProcessInfo.HasExited))
           dep.ProcessInfo.Kill();
       }
     }
@@ -201,7 +201,7 @@ namespace IDF.Utilities.ProcLaunch
     {
       lock (_configInfo)
       {
-        var theDep = _configInfo.Processes.SelectMany(x => x.Dependancies).Single(x => x.ProcessInfo == (Process)sender);
+        var theDep = _configInfo.Processes.SelectMany(x => x.Dependencies).Single(x => x.ProcessInfo == (Process)sender);
         //if the parent is done, then don't do anything. If not, and if the process supposed to be restarted, restart it.
         if (theDep.Restart && theDep.ProcessInfo.HasExited) //Typically, the subject being copied is terminated. 
           theDep.ProcessInfo.Start(); //start just re-uses the ProcessStartInfo and starts a new pid with the same info
